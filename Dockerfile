@@ -1,4 +1,18 @@
 FROM ubuntu as base
+
+# Create appuser.
+ENV USER=c-icap
+ENV UID=1001
+# See https://stackoverflow.com/a/55757473/12429735RUN
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/nonexistent" \
+    --shell "/sbin/nologin" \
+    --no-create-home \
+    --uid "${UID}" \
+    "${USER}"
+
 RUN apt-get update && apt-get upgrade -y
 
 FROM base as source
@@ -47,9 +61,21 @@ RUN apt-get install -y apt-transport-https && \
   apt-get install -y dotnet-runtime-3.1
     
 FROM dotnet-runtime
+
+# Import the user and group files from the builder.
+COPY --from=base /etc/passwd /etc/passwd
+COPY --from=base /etc/group /etc/group
+
 COPY --from=build /usr/local/c-icap /usr/local/c-icap
 COPY --from=build /run/c-icap /run/c-icap
 COPY --from=dotnet-builder /src/cloud-proxy-app/source/bin/Release/netcoreapp3.1/publish /usr/local/bin
+
+RUN mkdir -p /var/run/c-icap && \
+  chown c-icap:c-icap /var/run/c-icap /run/c-icap
+
+RUN apt-get install strace -y
+
+USER 1001:1001
 
 EXPOSE 1344
 CMD ["/usr/local/c-icap/bin/c-icap","-N","-D"]
